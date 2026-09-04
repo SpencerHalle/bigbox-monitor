@@ -1,0 +1,54 @@
+title: Minecraft
+views:
+  - title: SMP
+    path: smp
+    icon: mdi:minecraft
+    cards:
+      - type: entities
+        title: Now
+        show_header_toggle: false
+        entities:
+          - entity: binary_sensor.bigbox_mc_online
+            name: Server
+          - entity: sensor.bigbox_mc_players
+            name: Players online
+
+      - type: markdown
+        title: Online now
+        content: |
+          {% set p = state_attr('sensor.bigbox_mc_players','players') or [] %}
+          {% if p %}{% for name in p %}
+          - 🟢 **{{ name }}**
+          {%- endfor %}
+          {% else %}_Nobody online._{% endif %}
+
+      - type: statistics-graph
+        title: Players online — hourly peak (7 days)
+        period: hour
+        chart_type: bar
+        stat_types:
+          - max
+        entities:
+          - sensor.bigbox_mc_players
+
+      - type: history-graph
+        title: Who was on (7 days)
+        hours_to_show: 168
+        show_names: true
+        entities:
+          - binary_sensor.bigbox_mc_online
+          # binary_sensor.bigbox_mc_<name> rows appear here automatically
+          # the first time each player logs on — add them below if you want
+          # them pinned in a set order.
+
+      - type: logbook
+        title: Join / leave log
+        hours_to_show: 168
+        entities:
+          - binary_sensor.bigbox_mc_online
+
+      - type: markdown
+        content: >
+          _Each player gets a `binary_sensor.bigbox_mc_<name>` entity the first
+          time they log on. Add those rows to the two cards above, or open the
+          **History** panel and pick them, to see each person's sessions._

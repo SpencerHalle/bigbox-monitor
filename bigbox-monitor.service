@@ -1,0 +1,8 @@
+[Unit]
+Description=bigbox-monitor — push health + Minecraft state to Home Assistant
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/homelab/monitor/monitor.py
+Nice=10

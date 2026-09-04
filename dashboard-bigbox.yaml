@@ -1,0 +1,126 @@
+title: Bigbox
+views:
+  - title: Server
+    path: server
+    icon: mdi:server
+    cards:
+      - type: entities
+        title: Status
+        show_header_toggle: false
+        entities:
+          - entity: binary_sensor.bigbox_monitor
+            name: Monitor agent
+            secondary_info: last-changed
+          - entity: binary_sensor.bigbox_mc_online
+            name: Minecraft server
+          - entity: sensor.bigbox_containers
+            name: Containers up
+          - entity: sensor.bigbox_smart
+            name: Drive health (SMART)
+          - entity: sensor.bigbox_zpool_tank
+            name: ZFS pool "tank"
+          - entity: sensor.bigbox_disk_max
+            name: Fullest filesystem
+
+      - type: grid
+        columns: 2
+        square: false
+        cards:
+          - type: gauge
+            entity: sensor.bigbox_cpu
+            name: CPU
+            min: 0
+            max: 100
+            needle: true
+            severity: { green: 0, yellow: 70, red: 90 }
+          - type: gauge
+            entity: sensor.bigbox_memory
+            name: Memory
+            min: 0
+            max: 100
+            needle: true
+            severity: { green: 0, yellow: 75, red: 90 }
+          - type: gauge
+            entity: sensor.bigbox_cpu_temp
+            name: CPU temp
+            min: 20
+            max: 95
+            needle: true
+            severity: { green: 20, yellow: 70, red: 85 }
+          - type: gauge
+            entity: sensor.bigbox_gpu
+            name: GPU
+            min: 0
+            max: 100
+            needle: true
+            severity: { green: 0, yellow: 70, red: 90 }
+
+      - type: history-graph
+        title: Load, memory, temps (24h)
+        hours_to_show: 24
+        entities:
+          - sensor.bigbox_cpu
+          - sensor.bigbox_memory
+          - sensor.bigbox_cpu_temp
+          - sensor.bigbox_gpu
+
+      - type: entities
+        title: Storage
+        show_header_toggle: false
+        entities:
+          - entity: sensor.bigbox_disk_root
+            name: "/  (system SSD)"
+          - entity: sensor.bigbox_disk_media_storage
+            name: "tank  (/media/storage, ZFS 14.5T)"
+          - entity: sensor.bigbox_disk_media_fast_storage
+            name: "/media/fast_storage"
+          - entity: sensor.bigbox_disk_media_small_backups
+            name: "/media/small_backups"
+          - type: section
+            label: SMART per drive
+          - entity: sensor.bigbox_smart_sda
+            name: "sda  (tank)"
+          - entity: sensor.bigbox_smart_sdb
+            name: "sdb  (tank)"
+          - entity: sensor.bigbox_smart_sdc
+            name: "sdc  (tank)"
+          - entity: sensor.bigbox_smart_sdd
+            name: "sdd  (tank)"
+          - entity: sensor.bigbox_smart_sde
+            name: "sde  (system SSD)"
+          - entity: sensor.bigbox_smart_sdf
+            name: "sdf  (fast_storage)"
+          - entity: sensor.bigbox_smart_sdg
+            name: "sdg  (backups)"
+
+      - type: history-graph
+        title: Disk usage (7 days)
+        hours_to_show: 168
+        entities:
+          - entity: sensor.bigbox_ref_0
+            name: " "
+          - entity: sensor.bigbox_ref_100
+            name: " "
+          - sensor.bigbox_disk_root
+          - sensor.bigbox_disk_media_storage
+          - sensor.bigbox_disk_media_fast_storage
+          - sensor.bigbox_disk_media_small_backups
+
+      - type: entities
+        title: Containers
+        show_header_toggle: false
+        state_color: true
+        entities:
+          - sensor.bigbox_container_audiobookshelf
+          - sensor.bigbox_container_cloudflared
+          - sensor.bigbox_container_comfyui
+          - sensor.bigbox_container_immich_db
+          - sensor.bigbox_container_immich_machine_learning
+          - sensor.bigbox_container_immich_redis
+          - sensor.bigbox_container_immich_server
+          - sensor.bigbox_container_nextcloud
+          - sensor.bigbox_container_nextcloud_db
+          - sensor.bigbox_container_open_webui
+          - sensor.bigbox_container_spencer_smp
+          - sensor.bigbox_container_systemd_jellyfin
+          - sensor.bigbox_container_systemd_ollama

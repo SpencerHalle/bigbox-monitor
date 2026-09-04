@@ -1,0 +1,4 @@
+monitor.env
+mc_roster.json
+__pycache__/
+*.pyc
