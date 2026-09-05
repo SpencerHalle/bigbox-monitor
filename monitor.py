@@ -8,8 +8,9 @@ a failing probe is logged and skipped, the rest still publish.
 
 Entities published (all prefixed sensor.bigbox_ / binary_sensor.bigbox_):
   load, memory, cpu_temp, gpu, disk_max, disk_<mount>, zpool_<pool>,
-  smart, smart_<dev>, containers, mc_players, mc_online (binary),
-  mc_<player> (binary, per rostered player), monitor (binary heartbeat)
+  smart, smart_<dev>, containers, backup, backup_age_hours,
+  mc_players, mc_online (binary), mc_<player> (binary, per rostered player),
+  monitor (binary heartbeat)
 """
 import json
 import os
@@ -263,6 +264,38 @@ def collect_containers():
         "total": len(states), "down": down, "status": states,
     })
 
+def collect_backup():
+    """Read the nightly backup's status file and publish freshness + result."""
+    f = Path("/media/backup/.backup-status.json")
+    if not f.exists():
+        push("sensor.bigbox_backup", "unknown", {
+            "friendly_name": "bigbox backup", "icon": "mdi:backup-restore",
+            "note": "no /media/backup/.backup-status.json yet"})
+        return
+    try:
+        st = json.loads(f.read_text())
+    except (OSError, ValueError) as e:
+        log("backup status unreadable:", e)
+        push("sensor.bigbox_backup", "unknown",
+             {"friendly_name": "bigbox backup", "icon": "mdi:backup-restore"})
+        return
+    age_h = round((time.time() - st.get("ts", 0)) / 3600, 1)
+    if not st.get("ok"):
+        state = "failed"
+    elif age_h > 30:
+        state = "stale"
+    else:
+        state = "ok"
+    push("sensor.bigbox_backup", state, {
+        "friendly_name": "bigbox backup", "icon": "mdi:backup-restore",
+        "last_run": st.get("iso"), "age_hours": age_h,
+        "duration_s": st.get("duration_s"), "steps": st.get("steps", {}),
+        "dest_free_gb": round(st.get("dest_free_bytes", 0) / 2**30, 1),
+    })
+    push("sensor.bigbox_backup_age_hours", age_h, {
+        "friendly_name": "bigbox backup age", "icon": "mdi:backup-restore",
+        "unit_of_measurement": "h", "state_class": "measurement"})
+
 MC_LIST_RE = re.compile(r"There are (\d+) of a max of (\d+) players online:\s*(.*)")
 def collect_minecraft():
     out = run(["podman", "exec", MC_CONTAINER, "rcon-cli", "list"], timeout=20)
@@ -304,7 +337,7 @@ def main():
     t0 = time.time()
     for fn in (collect_load, collect_memory, collect_cpu_temp, collect_gpu,
                collect_disks, collect_zfs, collect_smart, collect_containers,
-               collect_minecraft):
+               collect_backup, collect_minecraft):
         try:
             fn()
         except Exception as e:                       # never let one probe kill the run

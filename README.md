@@ -12,13 +12,19 @@ no root (except a scoped `smartctl -H` sudoers line). Lives in `~/homelab/monito
 | `mc_roster.json` | every MC player ever seen (drives the per-player sensors) |
 | `bigbox-monitor.service` / `.timer` | systemd **user** units (`~/.config/systemd/user/`) |
 | `bigbox-monitor-setup.sh` | the one root step: smartctl sudoers + `enable-linger` |
-| `ha_automations.py` | (re)creates the 6 HA automations via the config API |
+| `ha_automations.py` | (re)creates the HA automations via the config API |
 | `ha_dashboard.py` + `dashboard-bigbox.yaml` / `dashboard-minecraft.yaml` | (re)create the two dashboards via the HA websocket API|
+
+The nightly **backup** job (`~/homelab/backup/`) is separate but wired in here:
+`monitor.py`'s `collect_backup()` reads `/media/backup/.backup-status.json` and
+publishes `sensor.bigbox_backup` + `sensor.bigbox_backup_age_hours`, and
+`ha_automations.py` carries the alert for it.
 
 ## Entities published
 
 `sensor.bigbox_` — `cpu`, `load`, `memory`, `cpu_temp`, `gpu`, `disk_max`,
 `disk_<mount>` (×4), `zpool_tank`, `smart` + `smart_sd[a-g]`, `containers`,
+`container_<name>`, `backup` (ok/failed/stale/unknown), `backup_age_hours`,
 `mc_players`.
 `binary_sensor.bigbox_` — `monitor` (heartbeat, has `last_run`), `mc_online`,
 `mc_<player>` (one per rostered player, on = currently online).
@@ -44,4 +50,5 @@ Alerts go to `notify.mobile_app_pixel_9_pro` — change `NOTIFY` in
 ## Automations
 
 disk >90% (10-min debounce) · SMART FAILED (critical) · ZFS pool not ONLINE
-(critical) · container down 5+ min · SMP join · monitor agent silent 6+ min.
+(critical) · container down 5+ min · nightly backup failed/stale 10+ min ·
+SMP join · monitor agent silent 6+ min.

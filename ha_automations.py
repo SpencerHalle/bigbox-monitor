@@ -64,6 +64,17 @@ AUTOMATIONS = {
         "Down: {{ (state_attr('sensor.bigbox_containers','down') or []) | join(', ') }}")],
     "mode": "single",
   },
+  "bigbox_backup_failed": {
+    "alias": "bigbox: nightly backup failed or stale",
+    "description": "Local backup to /media/backup failed, or hasn't succeeded in 30h.",
+    "trigger": [{"platform": "state", "entity_id": "sensor.bigbox_backup",
+                 "to": ["failed", "stale"], "for": {"minutes": 10}}],
+    "action": [notify("⚠️ bigbox backup " + "{{ states('sensor.bigbox_backup') }}",
+        "Last run {{ state_attr('sensor.bigbox_backup','last_run') }} "
+        "({{ state_attr('sensor.bigbox_backup','age_hours') }}h ago). "
+        "Steps: {{ state_attr('sensor.bigbox_backup','steps') }}")],
+    "mode": "single",
+  },
   "bigbox_mc_join": {
     "alias": "SMP: someone joined",
     "description": "Minecraft player count went up.",
