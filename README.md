@@ -10,6 +10,7 @@ no root (except a scoped `smartctl -H` sudoers line). Lives in `~/homelab/monito
 | `monitor.py` | the agent — collectors + HA REST push |
 | `monitor.env` | `HA_URL`, `HA_TOKEN`, `MC_CONTAINER` (chmod 600) |
 | `mc_roster.json` | every MC player ever seen (drives the per-player sensors) |
+| `mc_online.json` | who was on last tick — diffed each run to write join/leave Logbook lines |
 | `bigbox-monitor.service` / `.timer` | systemd **user** units (`~/.config/systemd/user/`) |
 | `bigbox-monitor-setup.sh` | the one root step: smartctl sudoers + `enable-linger` |
 | `ha_automations.py` | (re)creates the HA automations via the config API |
@@ -51,4 +52,10 @@ Alerts go to `notify.mobile_app_pixel_9_pro` — change `NOTIFY` in
 
 disk >90% (10-min debounce) · SMART FAILED (critical) · ZFS pool not ONLINE
 (critical) · container down 5+ min · nightly backup failed/stale 10+ min ·
-SMP join · monitor agent silent 6+ min.
+SMP player joined/left (every change, names who) · monitor agent silent 6+ min.
+
+The join/leave detection is poll-based (~60s): `monitor.py` diffs the online
+list against `mc_online.json` and writes a `logbook.log` line per change
+(shown in the dashboard's **Join / leave log** card, filtered on
+`sensor.bigbox_mc_players`). A session shorter than one poll interval can be
+missed entirely.

@@ -37,18 +37,24 @@ views:
         show_names: true
         entities:
           - binary_sensor.bigbox_mc_online
-          # binary_sensor.bigbox_mc_<name> rows appear here automatically
-          # the first time each player logs on — add them below if you want
-          # them pinned in a set order.
+          - binary_sensor.bigbox_mc_carpace
+          - binary_sensor.bigbox_mc_mary2333
+          - binary_sensor.bigbox_mc_spencer_obamna
+          # each new player gets a binary_sensor.bigbox_mc_<name> the first
+          # time they log on — add the row here to pin it in this graph.
 
       - type: logbook
         title: Join / leave log
         hours_to_show: 168
         entities:
+          # sensor.bigbox_mc_players carries the "X joined/left the SMP" lines
+          # the monitor writes on every change, plus the raw count history.
+          - sensor.bigbox_mc_players
           - binary_sensor.bigbox_mc_online
 
       - type: markdown
         content: >
-          _Each player gets a `binary_sensor.bigbox_mc_<name>` entity the first
-          time they log on. Add those rows to the two cards above, or open the
-          **History** panel and pick them, to see each person's sessions._
+          _The monitor polls every ~60s, so a login shorter than a minute can
+          slip between samples. Each player also gets a
+          `binary_sensor.bigbox_mc_<name>` entity — open the **History** panel
+          and pick them to see each person's individual sessions._

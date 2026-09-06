@@ -76,15 +76,26 @@ AUTOMATIONS = {
     "mode": "single",
   },
   "bigbox_mc_join": {
-    "alias": "SMP: someone joined",
-    "description": "Minecraft player count went up.",
-    "trigger": [{"platform": "numeric_state", "entity_id": "sensor.bigbox_mc_players", "above": 0}],
-    "condition": [{"condition": "template",
-        "value_template": "{{ (trigger.to_state.state | int(0)) > (trigger.from_state.state | int(0)) }}"}],
-    "action": [notify("🟢 SMP",
-        "Online: {{ state_attr('sensor.bigbox_mc_players','players') | join(', ') }} "
-        "({{ states('sensor.bigbox_mc_players') }}/{{ state_attr('sensor.bigbox_mc_players','max') }})")],
-    "mode": "single",
+    "alias": "SMP: player joined / left",
+    "description": "Any change to who is on the SMP — fires on every join and every leave, "
+                   "not just the first person on an empty server.",
+    "trigger": [{"platform": "state", "entity_id": "sensor.bigbox_mc_players"}],
+    "condition": [{"condition": "template", "value_template":
+        "{{ trigger.from_state is not none and "
+        "(trigger.to_state.attributes.players | default([])) != "
+        "(trigger.from_state.attributes.players | default([])) }}"}],
+    "action": [notify("SMP",
+        "{% set new = trigger.to_state.attributes.players | default([]) %}"
+        "{% set old = trigger.from_state.attributes.players | default([]) %}"
+        "{% set joined = new | reject('in', old) | list %}"
+        "{% set left = old | reject('in', new) | list %}"
+        "{% if joined %}🟢 {{ joined | join(', ') }} joined{% endif %}"
+        "{% if joined and left %} · {% endif %}"
+        "{% if left %}🔴 {{ left | join(', ') }} left{% endif %}. "
+        "Online: {{ new | join(', ') if new else 'nobody' }} "
+        "({{ new | count }}/{{ trigger.to_state.attributes.max | default('?') }}).")],
+    "mode": "queued",
+    "max": 5,
   },
   "bigbox_monitor_stale": {
     "alias": "bigbox: monitor agent silent",

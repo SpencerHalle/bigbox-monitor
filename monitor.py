@@ -26,7 +26,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-ROSTER_FILE = HERE / "mc_roster.json"
+ROSTER_FILE = HERE / "mc_roster.json"     # every player ever seen
+ONLINE_FILE = HERE / "mc_online.json"     # who was online on the previous run
 
 # ── config ──────────────────────────────────────────────────────────
 def load_env():
@@ -86,6 +87,17 @@ def push(entity_id, state, attrs=None):
     except (urllib.error.URLError, TimeoutError, OSError) as e:
         log("HA unreachable, skipping the rest of this run:", e)
         _ha_dead = True
+
+def logbook_log(name, message, entity_id):
+    """Write a one-line entry into HA's Logbook (logbook.log service)."""
+    if _ha_dead:
+        return
+    try:
+        ha_request("POST", "/api/services/logbook/log",
+                   {"name": name, "message": message,
+                    "entity_id": entity_id, "domain": "minecraft"})
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        log("logbook.log failed:", e)
 
 # ── collectors ──────────────────────────────────────────────────────
 def collect_load():
@@ -329,6 +341,25 @@ def collect_minecraft():
              "on" if p in players else "off",
              {"friendly_name": f"SMP: {p}", "icon": "mdi:account",
               "player": p, "device_class": "presence"})
+
+    # join / leave: diff this run's online set against the last one and
+    # write a Logbook line per change. Only runs when rcon succeeded, so a
+    # transient failure flaps binary_sensor.bigbox_mc_online but never
+    # fabricates a join/leave storm.
+    try:
+        was_online = set(json.loads(ONLINE_FILE.read_text())) if ONLINE_FILE.exists() else None
+    except (OSError, ValueError):
+        was_online = None
+    now_online = set(players)
+    if was_online is not None:        # skip first run — would log everyone as joining
+        for p in sorted(now_online - was_online):
+            logbook_log(p, "joined the SMP", "sensor.bigbox_mc_players")
+        for p in sorted(was_online - now_online):
+            logbook_log(p, "left the SMP", "sensor.bigbox_mc_players")
+    try:
+        ONLINE_FILE.write_text(json.dumps(sorted(now_online)))
+    except OSError:
+        pass
 
 def main():
     if not HA_TOKEN:
