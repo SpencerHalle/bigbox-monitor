@@ -1,0 +1,11 @@
+title: Map
+views:
+  - type: panel
+    title: Map
+    icon: mdi:map
+    cards:
+      - type: map
+        auto_fit: true
+        entities:
+          - entity: device_tracker.pixel_9_pro
+          - entity: device_tracker.fatty
