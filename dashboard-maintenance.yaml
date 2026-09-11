@@ -16,6 +16,7 @@ views:
             ('sensor.pixel_9_pro_battery_level', 'Pixel 9 Pro'),
             ('sensor.spencers_iphone_battery_level', "Spencer's iPhone"),
             ('sensor.spencers_real_iphone_battery_level', "Spencer's Real iPhone"),
+            ('sensor.fatty_battery_level', 'Fatty (GPS collar)'),
           ] %}
           {% set ns = namespace(low=[]) %}
           {% for eid, name in batteries %}
@@ -58,6 +59,24 @@ views:
           - entity: sensor.missioj_battery_level
             name: Mission Phone
 
+      - type: entities
+        title: Fatty's GPS collar
+        show_header_toggle: false
+        state_color: true
+        entities:
+          - entity: device_tracker.fatty
+            name: Location
+          - entity: sensor.fatty_battery_level
+            name: Battery
+          - entity: sensor.fatty_status
+            name: Status
+          - entity: sensor.fatty_location_source
+            name: Fix source
+          - entity: sensor.fatty_cellular_signal
+            name: Signal
+          - entity: sensor.fatty_update_time
+            name: Last update
+
       - type: history-graph
         title: Battery trends (30 days)
         hours_to_show: 720
@@ -69,6 +88,6 @@ views:
 
       - type: markdown
         content: >
-          _New battery-reporting entities (e.g. the cat's GPS tracker, once
-          added) aren't auto-discovered here — ask me to add a
-          `sensor.*_battery` entity to this card and I'll wire it in._
+          _New battery-reporting entities aren't auto-discovered here — ask
+          me to add a `sensor.*_battery` entity to this card and I'll wire
+          it in._
