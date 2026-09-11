@@ -1,0 +1,69 @@
+title: Security
+views:
+  - title: Security
+    path: security
+    icon: mdi:shield-home
+    cards:
+      - type: markdown
+        title: Status
+        content: >
+          {% set doors = [
+            ('binary_sensor.front_door_sensor', 'Front Door'),
+            ('binary_sensor.kitchen_door_sensor', 'Kitchen Door'),
+            ('binary_sensor.living_room_living_room_door_sensor', 'Living Room Door'),
+            ('binary_sensor.indoor_garage_door', 'Garage Door'),
+          ] %}
+          {% set open_doors = doors | selectattr('0', 'is_state', 'on') | map(attribute=1) | list %}
+          {% if open_doors %}
+          ## 🔴 {{ open_doors | length }} door{{ 's' if open_doors | length != 1 else '' }} open
+
+          {{ open_doors | join(', ') }}
+          {% else %}
+          ## 🟢 All doors closed
+          {% endif %}
+
+      - type: glance
+        title: Doors
+        show_state: true
+        state_color: true
+        entities:
+          - entity: binary_sensor.front_door_sensor
+            name: Front Door
+          - entity: binary_sensor.kitchen_door_sensor
+            name: Kitchen
+          - entity: binary_sensor.living_room_living_room_door_sensor
+            name: Living Room
+          - entity: binary_sensor.indoor_garage_door
+            name: Garage
+
+      - type: entities
+        title: Alerting
+        show_header_toggle: false
+        entities:
+          - entity: automation.door_opened_overnight_urgent
+            name: Overnight door alert (00:00-06:00)
+
+      - type: history-graph
+        title: Door activity (7 days)
+        hours_to_show: 168
+        entities:
+          - binary_sensor.front_door_sensor
+          - binary_sensor.kitchen_door_sensor
+          - binary_sensor.living_room_living_room_door_sensor
+          - binary_sensor.indoor_garage_door
+
+      - type: logbook
+        title: Door event log
+        hours_to_show: 168
+        entities:
+          - binary_sensor.front_door_sensor
+          - binary_sensor.kitchen_door_sensor
+          - binary_sensor.living_room_living_room_door_sensor
+          - binary_sensor.indoor_garage_door
+
+      - type: markdown
+        content: >
+          _Doors are contact sensors (`device_class: opening`) — the icon
+          fills red and reads **Open** when a door is opened, and greys out
+          to **Closed** otherwise. The urgent push alert only fires 00:00–06:00;
+          the log/graph above track door events around the clock._
