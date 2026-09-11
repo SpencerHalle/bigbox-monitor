@@ -1,0 +1,74 @@
+title: Maintenance
+views:
+  - title: Maintenance
+    path: maintenance
+    icon: mdi:battery-heart-variant
+    cards:
+      - type: markdown
+        title: Battery status
+        content: >
+          {% set batteries = [
+            ('sensor.front_door_sensor_battery', 'Front Door Sensor'),
+            ('sensor.kitchen_door_sensor_battery', 'Kitchen Door Sensor'),
+            ('sensor.living_room_living_room_door_sensor_battery', 'Living Room Door Sensor'),
+            ('sensor.indoor_garage_door_battery', 'Garage Door Sensor'),
+            ('sensor.missioj_battery_level', 'Mission Phone'),
+            ('sensor.pixel_9_pro_battery_level', 'Pixel 9 Pro'),
+            ('sensor.spencers_iphone_battery_level', "Spencer's iPhone"),
+            ('sensor.spencers_real_iphone_battery_level', "Spencer's Real iPhone"),
+          ] %}
+          {% set ns = namespace(low=[]) %}
+          {% for eid, name in batteries %}
+            {% set val = states(eid) %}
+            {% if val not in ['unknown', 'unavailable', 'none'] and val | int(100) < 20 %}
+              {% set ns.low = ns.low + [name ~ ' (' ~ val ~ '%)'] %}
+            {% endif %}
+          {% endfor %}
+          {% if ns.low %}
+          ## 🔴 Low battery: {{ ns.low | join(', ') }}
+          {% else %}
+          ## 🟢 All batteries OK
+          {% endif %}
+
+      - type: entities
+        title: Door & sensor batteries
+        show_header_toggle: false
+        state_color: true
+        entities:
+          - entity: sensor.front_door_sensor_battery
+            name: Front Door Sensor
+          - entity: sensor.kitchen_door_sensor_battery
+            name: Kitchen Door Sensor
+          - entity: sensor.living_room_living_room_door_sensor_battery
+            name: Living Room Door Sensor
+          - entity: sensor.indoor_garage_door_battery
+            name: Garage Door Sensor
+
+      - type: entities
+        title: Phone batteries
+        show_header_toggle: false
+        state_color: true
+        entities:
+          - entity: sensor.pixel_9_pro_battery_level
+            name: Pixel 9 Pro
+          - entity: sensor.spencers_iphone_battery_level
+            name: Spencer's iPhone
+          - entity: sensor.spencers_real_iphone_battery_level
+            name: Spencer's Real iPhone
+          - entity: sensor.missioj_battery_level
+            name: Mission Phone
+
+      - type: history-graph
+        title: Battery trends (30 days)
+        hours_to_show: 720
+        entities:
+          - sensor.front_door_sensor_battery
+          - sensor.kitchen_door_sensor_battery
+          - sensor.living_room_living_room_door_sensor_battery
+          - sensor.indoor_garage_door_battery
+
+      - type: markdown
+        content: >
+          _New battery-reporting entities (e.g. the cat's GPS tracker, once
+          added) aren't auto-discovered here — ask me to add a
+          `sensor.*_battery` entity to this card and I'll wire it in._
