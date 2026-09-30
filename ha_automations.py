@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Create/replace the bigbox-monitor automations in Home Assistant via the config API."""
-import json, sys, urllib.request
+import json, os, sys, urllib.request
 
 HA = "http://10.0.0.90:8123"
 TOK = open("/dev/stdin").read().strip() if not sys.stdin.isatty() else sys.argv[1]
@@ -21,7 +21,25 @@ def notify(title, message, critical=False):
                         "priority": "high", "ttl": 0}
     return {"service": NOTIFY, "data": data}
 
+# recipe app posts here when a new draft lands; the id is a secret (anyone on the LAN
+# who knows it can trigger the push), so it lives in the recipe app's gitignored secrets.
+RECIPE_HOOK = open(os.path.expanduser("~/homelab/recipes/secrets/ha_webhook_id")).read().strip()
+
 AUTOMATIONS = {
+  "recipe_submitted": {
+    "alias": "Recipes: new submission",
+    "description": "recipes@halleserver.cc got a recipe — a draft is waiting in /review.",
+    "trigger": [{"platform": "webhook", "webhook_id": RECIPE_HOOK,
+                 "allowed_methods": ["POST"], "local_only": True}],
+    "action": [{"service": NOTIFY, "data": {
+        "title": "{{ '⚠️ Recipe needs typing in' if trigger.json.failed else '🍳 New recipe submitted' }}",
+        "message": "{{ trigger.json.title }} — from "
+                   "{{ trigger.json.author if trigger.json.author else trigger.json.sender }}",
+        "data": {"clickAction": "{{ trigger.json.review_url }}", "url": "{{ trigger.json.review_url }}",
+                 "channel": "Recipes"}}}],
+    "mode": "queued",
+    "max": 10,
+  },
   "bigbox_disk_full": {
     "alias": "bigbox: disk over 90%",
     "description": "Any bigbox filesystem crosses 90% full.",
