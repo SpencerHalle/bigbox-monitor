@@ -21,6 +21,15 @@ The nightly **backup** job (`~/homelab/backup/`) is separate but wired in here:
 publishes `sensor.bigbox_backup` + `sensor.bigbox_backup_age_hours`, and
 `ha_automations.py` carries the alert for it.
 
+The **offsite** tier (restic to `office`, driven by office at 02:00 — see
+`~/homelab/backup/offsite.sh`) writes `/media/backup/.offsite-status.json`, updated
+every ~30s during a run. `collect_offsite()` publishes `sensor.bigbox_offsite_backup`
+(ok / running / failed / stale / stalled / unknown, with progress, ETA, snapshots,
+repo size, office free space as attributes) plus `_age_hours`, `_progress`,
+`_repo_size`, `_office_free`. Alerts: failed/stale/stalled for 10 min, office drive
+under 200 GB, and a one-off push when the first offsite snapshot completes. If
+office never calls in, the file stops updating and the sensor goes stale after 30h.
+
 ## Entities published
 
 `sensor.bigbox_` — `cpu`, `load`, `memory`, `cpu_temp`, `gpu`, `disk_max`,

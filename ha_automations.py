@@ -93,6 +93,41 @@ AUTOMATIONS = {
         "Steps: {{ state_attr('sensor.bigbox_backup','steps') }}")],
     "mode": "single",
   },
+  "bigbox_offsite_backup_failed": {
+    "alias": "bigbox: offsite backup failed or stale",
+    "description": "Offsite restic backup to office failed, stopped reporting mid-run, or "
+                   "hasn't succeeded in 30h (also catches office being off/unplugged).",
+    "trigger": [{"platform": "state", "entity_id": "sensor.bigbox_offsite_backup",
+                 "to": ["failed", "stale", "stalled"], "for": {"minutes": 10}}],
+    "action": [notify("⚠️ Offsite backup " + "{{ states('sensor.bigbox_offsite_backup') }}",
+        "Last good offsite snapshot: {{ state_attr('sensor.bigbox_offsite_backup','last_success') or 'never' }}. "
+        "{% set e = state_attr('sensor.bigbox_offsite_backup','last_error') %}"
+        "{% if e %}Error: {{ e }}. {% endif %}"
+        "Check office: systemctl status offsite-backup restic-rest-server")],
+    "mode": "single",
+  },
+  "bigbox_offsite_backup_done": {
+    "alias": "bigbox: first offsite backup finished",
+    "description": "One-off heads-up when the very first offsite snapshot completes.",
+    "trigger": [{"platform": "state", "entity_id": "sensor.bigbox_offsite_backup",
+                 "from": "running", "to": "ok"}],
+    "condition": [{"condition": "template",
+                   "value_template": "{{ state_attr('sensor.bigbox_offsite_backup','snapshots') | int(0) == 1 }}"}],
+    "action": [notify("✅ First offsite backup done",
+        "{{ state_attr('sensor.bigbox_offsite_backup','repo_gb') }} GB stored on office, "
+        "took {{ (state_attr('sensor.bigbox_offsite_backup','duration_s') | int(0) / 3600) | round(1) }} h. "
+        "Nightly runs at 02:00 from now on.")],
+    "mode": "single",
+  },
+  "bigbox_offsite_drive_low": {
+    "alias": "bigbox: office backup drive low on space",
+    "description": "Offsite drive on office has under 200 GB free.",
+    "trigger": [{"platform": "numeric_state", "entity_id": "sensor.bigbox_offsite_office_free",
+                 "below": 200}],
+    "action": [notify("⚠️ Offsite backup drive filling up",
+        "{{ states('sensor.bigbox_offsite_office_free') }} GB free on the office backup drive.")],
+    "mode": "single",
+  },
   "bigbox_mc_join": {
     "alias": "SMP: player joined / left",
     "description": "Any change to who is on the SMP — fires on every join and every leave, "

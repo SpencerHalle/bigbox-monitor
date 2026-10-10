@@ -22,6 +22,58 @@ views:
           - entity: sensor.bigbox_disk_max
             name: Fullest filesystem
 
+      - type: entities
+        title: Backups
+        show_header_toggle: false
+        state_color: true
+        entities:
+          - type: section
+            label: "Local mirror (/media/backup, nightly ~00:30)"
+          - entity: sensor.bigbox_backup
+            name: Status
+          - entity: sensor.bigbox_backup_age_hours
+            name: Hours since last good run
+          - type: attribute
+            entity: sensor.bigbox_backup
+            attribute: dest_free_gb
+            name: Backup disk free
+            suffix: GB
+          - type: section
+            label: "Offsite on office (restic, nightly 02:00)"
+          - entity: sensor.bigbox_offsite_backup
+            name: Status
+          - entity: sensor.bigbox_offsite_backup_age_hours
+            name: Hours since last good snapshot
+          - type: conditional
+            conditions:
+              - entity: sensor.bigbox_offsite_backup
+                state: running
+            row:
+              entity: sensor.bigbox_offsite_progress
+              name: Upload progress
+          - type: conditional
+            conditions:
+              - entity: sensor.bigbox_offsite_backup
+                state: running
+            row:
+              type: attribute
+              entity: sensor.bigbox_offsite_backup
+              attribute: eta
+              name: Time remaining
+          - type: attribute
+            entity: sensor.bigbox_offsite_backup
+            attribute: snapshots
+            name: Snapshots kept
+          - entity: sensor.bigbox_offsite_repo_size
+            name: Repo size
+          - entity: sensor.bigbox_offsite_office_free
+            name: Office drive free
+          - type: attribute
+            entity: sensor.bigbox_offsite_backup
+            attribute: uploaded_this_run_gb
+            name: New data last run
+            suffix: GB
+
       - type: grid
         columns: 2
         square: false

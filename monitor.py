@@ -9,6 +9,7 @@ a failing probe is logged and skipped, the rest still publish.
 Entities published (all prefixed sensor.bigbox_ / binary_sensor.bigbox_):
   load, memory, cpu_temp, gpu, disk_max, disk_<mount>, zpool_<pool>,
   smart, smart_<dev>, containers, backup, backup_age_hours,
+  offsite_backup, offsite_backup_age_hours, offsite_progress, offsite_repo_size, offsite_office_free,
   mc_players, mc_online (binary), mc_<player> (binary, per rostered player),
   monitor (binary heartbeat)
 """
@@ -308,6 +309,65 @@ def collect_backup():
         "friendly_name": "bigbox backup age", "icon": "mdi:backup-restore",
         "unit_of_measurement": "h", "state_class": "measurement"})
 
+def collect_offsite():
+    """Offsite tier: restic snapshots pushed to office (see ~/homelab/backup/offsite.sh).
+
+    office drives each run; offsite.sh keeps .offsite-status.json updated every ~30s
+    while uploading. If office never calls in (office off, drive unplugged, tunnel
+    broken) the file just stops changing, which shows up here as stale."""
+    f = Path("/media/backup/.offsite-status.json")
+    base = {"friendly_name": "offsite backup (office)", "icon": "mdi:cloud-upload"}
+    if not f.exists():
+        push("sensor.bigbox_offsite_backup", "unknown",
+             {**base, "note": "no offsite run yet"})
+        return
+    try:
+        st = json.loads(f.read_text())
+    except (OSError, ValueError) as e:
+        log("offsite status unreadable:", e)
+        push("sensor.bigbox_offsite_backup", "unknown", base)
+        return
+    now = time.time()
+    upd_h = (now - st.get("ts", 0)) / 3600
+    good = st.get("last_success_ts")
+    age_h = round((now - good) / 3600, 1) if good else None
+    if st.get("running"):
+        if upd_h > 2:
+            state = "stalled"            # run started but stopped reporting progress
+        elif age_h is not None and age_h > 54:
+            state = "stale"              # runs keep starting but none has finished in 2+ days
+        else:
+            state = "running"
+    elif not st.get("ok"):
+        state = "failed"
+    elif age_h is None or age_h > 30:
+        state = "stale"
+    else:
+        state = "ok"
+    gb = lambda b: round(b / 1e9, 1) if isinstance(b, (int, float)) else None
+    eta = st.get("eta_s") if st.get("running") else None
+    push("sensor.bigbox_offsite_backup", state, {**base,
+        "last_success": st.get("last_success_iso"), "age_hours": age_h,
+        "last_update": st.get("iso"), "percent": st.get("percent"),
+        "eta": (f"{eta // 3600}h {eta % 3600 // 60}m" if isinstance(eta, int) else None),
+        "uploaded_this_run_gb": gb(st.get("data_added")),
+        "processed_gb": gb(st.get("bytes_done")), "total_gb": gb(st.get("total_bytes")),
+        "snapshots": st.get("snapshots"), "repo_gb": gb(st.get("repo_bytes")),
+        "office_free_gb": gb(st.get("office_free_bytes")),
+        "duration_s": st.get("duration_s"), "rc": st.get("rc"),
+        "errors": st.get("errors"), "last_error": st.get("last_error")})
+    if age_h is not None:
+        push("sensor.bigbox_offsite_backup_age_hours", age_h, {**base,
+            "friendly_name": "offsite backup age", "unit_of_measurement": "h",
+            "state_class": "measurement"})
+    push("sensor.bigbox_offsite_progress", st.get("percent", 0) if st.get("running") else 100,
+         {**base, "friendly_name": "offsite upload progress", "unit_of_measurement": "%"})
+    for key, eid, name in (("repo_bytes", "offsite_repo_size", "offsite repo size"),
+                           ("office_free_bytes", "offsite_office_free", "office backup drive free")):
+        if gb(st.get(key)) is not None:
+            push(f"sensor.bigbox_{eid}", gb(st.get(key)), {**base, "friendly_name": name,
+                 "icon": "mdi:harddisk", "unit_of_measurement": "GB", "state_class": "measurement"})
+
 MC_LIST_RE = re.compile(r"There are (\d+) of a max of (\d+) players online:\s*(.*)")
 def collect_minecraft():
     out = run(["podman", "exec", MC_CONTAINER, "rcon-cli", "list"], timeout=20)
@@ -368,7 +428,7 @@ def main():
     t0 = time.time()
     for fn in (collect_load, collect_memory, collect_cpu_temp, collect_gpu,
                collect_disks, collect_zfs, collect_smart, collect_containers,
-               collect_backup, collect_minecraft):
+               collect_backup, collect_offsite, collect_minecraft):
         try:
             fn()
         except Exception as e:                       # never let one probe kill the run
