@@ -3,3 +3,4 @@ mc_roster.json
 __pycache__/
 *.pyc
 mc_online.json
+immich.env
