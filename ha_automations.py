@@ -60,6 +60,21 @@ AUTOMATIONS = {
         "Check the drive now.", critical=True)],
     "mode": "single",
   },
+  "bigbox_drive_defects_up": {
+    "alias": "bigbox: drive defect count increased",
+    "description": "Any drive's bad-sector count (SAS grown defect list, or SATA reallocated + "
+                   "pending + uncorrectable) goes up. Fires on every increase, not a threshold.",
+    "trigger": [{"platform": "state", "entity_id": [f"sensor.bigbox_defects_sd{c}" for c in "abcdefg"]}],
+    "condition": [{"condition": "template", "value_template":
+        "{{ trigger.from_state.state | int(-1) >= 0 and "
+        "trigger.to_state.state | int(-1) > trigger.from_state.state | int(-1) }}"}],
+    "action": [notify("⚠️ bigbox drive defects up",
+        "{{ trigger.to_state.attributes.friendly_name }}: "
+        "{{ trigger.from_state.state }} → {{ trigger.to_state.state }}. "
+        "Check it with smartctl; replace it if it keeps climbing.")],
+    "mode": "queued",
+    "max": 10,
+  },
   "bigbox_zpool_unhealthy": {
     "alias": "bigbox: ZFS pool not ONLINE",
     "description": "tank pool leaves the ONLINE state (DEGRADED/FAULTED/etc).",

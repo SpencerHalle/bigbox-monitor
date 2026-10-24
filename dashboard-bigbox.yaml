@@ -144,6 +144,17 @@ views:
             name: "sdf  (fast_storage)"
           - entity: sensor.bigbox_smart_sdg
             name: "sdg  (backups)"
+          - type: section
+            label: Drive defects (bad sectors)
+          - entity: sensor.bigbox_pool_defects
+            name: "tank pool total"
+          - entity: sensor.bigbox_defects_sda
+          - entity: sensor.bigbox_defects_sdb
+          - entity: sensor.bigbox_defects_sdc
+          - entity: sensor.bigbox_defects_sdd
+          - entity: sensor.bigbox_defects_sde
+          - entity: sensor.bigbox_defects_sdf
+          - entity: sensor.bigbox_defects_sdg
 
       - type: history-graph
         title: Disk usage (7 days)

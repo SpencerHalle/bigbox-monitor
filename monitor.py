@@ -8,7 +8,7 @@ a failing probe is logged and skipped, the rest still publish.
 
 Entities published (all prefixed sensor.bigbox_ / binary_sensor.bigbox_):
   load, memory, cpu_temp, gpu, disk_max, disk_<mount>, zpool_<pool>,
-  smart, smart_<dev>, containers, backup, backup_age_hours,
+  smart, smart_<dev>, defects_<dev>, pool_defects, containers, backup, backup_age_hours,
   offsite_backup, offsite_backup_age_hours, offsite_progress, offsite_repo_size, offsite_office_free,
   mc_players, mc_online (binary), mc_<player> (binary, per rostered player),
   monitor (binary heartbeat)
@@ -222,24 +222,89 @@ def collect_zfs():
         })
 
 SMART_DEVS = ["sda", "sdb", "sdc", "sdd", "sde", "sdf", "sdg"]
+# The NOPASSWD rule in /etc/sudoers.d/bigbox-monitor is ignored by sudo-rs (Ubuntu's
+# default `sudo` since ~Oct 2026), which silently left every drive UNKNOWN. The classic
+# sudo is still installed as sudo.ws and honours the rule.
+SUDO = "/usr/bin/sudo.ws" if Path("/usr/bin/sudo.ws").exists() else "sudo"
+
+def run_smartctl(args, dev):
+    """smartctl exits non-zero whenever a drive has any logged error, so unlike run()
+    we keep stdout regardless of the return code (sudo failures leave stdout empty)."""
+    try:
+        r = subprocess.run([SUDO, "-n", "smartctl", *args, dev],
+                           capture_output=True, text=True, timeout=20)
+        return r.stdout
+    except (subprocess.SubprocessError, OSError) as e:
+        log("smartctl failed:", dev, "-", e)
+        return ""
+
+def pool_wwns():
+    """WWNs (lowercase hex, no 0x) of every zpool member, from `zpool status`."""
+    return set(re.findall(r"wwn-0x([0-9a-f]+)", run(["zpool", "status"])))
+
+def parse_defects(attrs_out):
+    """Return (defects, detail) from `smartctl -A` output, or (None, {}) if unreadable.
+    SAS: grown defect list length. SATA: reallocated + pending + offline-uncorrectable."""
+    m = re.search(r"Elements in grown defect list:\s*(\d+)", attrs_out)
+    if m:                                                      # SAS/SCSI
+        uncorrected = 0
+        for line in attrs_out.splitlines():
+            if re.match(r"(read|write|verify):", line):
+                uncorrected += int(float(line.split()[-1]))
+        return int(m.group(1)), {"type": "grown_defect_list", "uncorrected_errors": uncorrected}
+    found = {}
+    for num, name in ((5, "reallocated"), (197, "pending"), (198, "uncorrectable")):
+        m = re.search(rf"^\s*{num}\s+\S+\s+.*?(\d+)(?:\s+\(.*\))?\s*$", attrs_out, re.M)
+        if m:
+            found[name] = int(m.group(1))
+    if found:                                                  # SATA
+        return sum(found.values()), {"type": "sata_bad_sectors", **found}
+    return None, {}
+
 def collect_smart():
     results = {}
+    pool = pool_wwns()
+    pool_defects = {}
     for dev in SMART_DEVS:
         path = f"/dev/{dev}"
         if not Path(path).exists():
             continue
-        out = run(["sudo", "-n", "smartctl", "-H", "-i", path], timeout=20)
+        out = run_smartctl(["-H", "-i"], path)
         if not out:
             results[dev] = "UNKNOWN"
             continue
         m = re.search(r"(?:SMART overall-health self-assessment test result|"
                       r"SMART Health Status):\s*(\S+)", out)
         status = m.group(1).upper() if m else "UNKNOWN"
-        model = re.search(r"(?:Device Model|Model Number):\s*(.+)", out)
+        model = re.search(r"(?:Device Model|Model Number|Product):\s*(.+)", out)
+        serial = re.search(r"Serial [Nn]umber:\s*(\S+)", out)
+        wwn = re.search(r"(?:Logical Unit id:\s*0x|LU WWN Device Id:\s*)([0-9a-f ]+)", out)
+        wwn = wwn.group(1).replace(" ", "").lower() if wwn else ""
+        serial = serial.group(1) if serial else ""
+        in_pool = bool(wwn and wwn in pool)
         results[dev] = status
         push(f"sensor.bigbox_smart_{dev}", status, {
             "friendly_name": f"bigbox SMART {dev}", "icon": "mdi:harddisk",
             "model": model.group(1).strip() if model else "",
+            "serial": serial,
+        })
+        defects, detail = parse_defects(run_smartctl(["-H", "-A"], path))
+        if defects is not None:
+            label = f"{dev} · {serial}" + (" · tank" if in_pool else "")
+            push(f"sensor.bigbox_defects_{dev}", defects, {
+                "friendly_name": f"Defects {label}", "icon": "mdi:harddisk-remove",
+                "state_class": "measurement", "unit_of_measurement": "sectors",
+                "serial": serial, "wwn": wwn, "in_pool": in_pool,
+                "model": model.group(1).strip() if model else "", **detail,
+            })
+            if in_pool:
+                pool_defects[f"{dev} · {serial}"] = defects
+    if pool_defects:
+        push("sensor.bigbox_pool_defects", sum(pool_defects.values()), {
+            "friendly_name": "tank drive defects (total)", "icon": "mdi:harddisk-remove",
+            "state_class": "measurement", "unit_of_measurement": "sectors",
+            "drives": pool_defects,
+            "worst": max(pool_defects, key=pool_defects.get),
         })
     vals = set(results.values())
     if "FAILED" in vals:
