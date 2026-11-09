@@ -24,8 +24,24 @@ def notify(title, message, critical=False):
 # recipe app posts here when a new draft lands; the id is a secret (anyone on the LAN
 # who knows it can trigger the push), so it lives in the recipe app's gitignored secrets.
 RECIPE_HOOK = open(os.path.expanduser("~/homelab/recipes/secrets/ha_webhook_id")).read().strip()
+# flashcards app (cards.halleserver.cc) posts here when someone makes an account.
+FLASHCARDS_HOOK = open(os.path.expanduser("~/homelab/flashcards/secrets/ha_webhook_id")).read().strip()
 
 AUTOMATIONS = {
+  "flashcards_signup": {
+    "alias": "Flashcards: new account",
+    "description": "Someone signed up at cards.halleserver.cc.",
+    "trigger": [{"platform": "webhook", "webhook_id": FLASHCARDS_HOOK,
+                 "allowed_methods": ["POST"], "local_only": True}],
+    "action": [{"service": NOTIFY, "data": {
+        "title": "📇 New flashcards account",
+        "message": "{{ trigger.json.username }} signed up at {{ trigger.json.time }} "
+                   "({{ trigger.json.total_users }} accounts now).",
+        "data": {"clickAction": "{{ trigger.json.admin_url }}", "url": "{{ trigger.json.admin_url }}",
+                 "channel": "Flashcards"}}}],
+    "mode": "queued",
+    "max": 10,
+  },
   "recipe_submitted": {
     "alias": "Recipes: new submission",
     "description": "recipes@halleserver.cc got a recipe — a draft is waiting in /review.",
