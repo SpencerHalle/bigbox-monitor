@@ -12,6 +12,11 @@ Entities published (all prefixed sensor.bigbox_ / binary_sensor.bigbox_):
   offsite_backup, offsite_backup_age_hours, offsite_progress, offsite_repo_size, offsite_office_free,
   mc_players, mc_online (binary), mc_<player> (binary, per rostered player),
   monitor (binary heartbeat)
+
+Also probes testserver (the Pi 5 running Robbie) over ssh with pi_health.py and publishes
+  binary_sensor.pi_reachable, binary_sensor.pi_root_ro, binary_sensor.pi_robbie,
+  sensor.pi_disk_errors, sensor.pi_throttled, sensor.pi_temp, sensor.pi_free,
+  sensor.pi_uptime, sensor.pi_memory, sensor.pi_undervoltage_events, sensor.pi_sd_writes
 """
 import json
 import os
@@ -41,7 +46,7 @@ def load_env():
                 k, v = line.split("=", 1)
                 env[k.strip()] = v.strip().strip('"').strip("'")
     env.update({k: os.environ[k] for k in
-                ("HA_URL", "HA_TOKEN", "MC_CONTAINER", "NOTIFY_TARGET")
+                ("HA_URL", "HA_TOKEN", "MC_CONTAINER", "NOTIFY_TARGET", "PI_HOST")
                 if k in os.environ})
     return env
 
@@ -49,6 +54,7 @@ CFG = load_env()
 HA_URL = CFG.get("HA_URL", "http://10.0.0.90:8123").rstrip("/")
 HA_TOKEN = CFG.get("HA_TOKEN", "")
 MC_CONTAINER = CFG.get("MC_CONTAINER", "spencer-smp")
+PI_HOST = CFG.get("PI_HOST", "spencer@10.0.0.17")    # testserver over the LAN (spencer key)
 
 def log(*a):
     print(datetime.now().strftime("%H:%M:%S"), *a, file=sys.stderr, flush=True)
@@ -486,6 +492,87 @@ def collect_minecraft():
     except OSError:
         pass
 
+# vcgencmd get_throttled bit -> meaning (bits 0-3 = right now, 16-19 = since boot)
+PI_THROTTLE_BITS = {0: "under-voltage", 1: "freq capped", 2: "throttled", 3: "soft temp limit"}
+
+def collect_pi():
+    """testserver (Pi 5, SD-card root) health. pi_health.py is piped over ssh, so nothing
+    has to be installed on the Pi. An ssh failure = pi_reachable off; the other pi_*
+    sensors keep their last value (HA shows when they last changed)."""
+    script = HERE / "pi_health.py"
+    try:
+        with script.open() as f:
+            r = subprocess.run(
+                ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=6",
+                 "-o", "ServerAliveInterval=5", "-o", "ServerAliveCountMax=2",
+                 PI_HOST, "python3", "-"],
+                stdin=f, capture_output=True, text=True, timeout=25)
+        st = json.loads(r.stdout) if r.returncode == 0 else None
+        err = r.stderr.strip()[-200:] or f"ssh exit {r.returncode}"
+    except (subprocess.SubprocessError, OSError, ValueError) as e:
+        st, err = None, str(e)[:200]
+    dev = {"source": "bigbox-monitor", "host": PI_HOST.split("@")[-1]}
+    if st is None:
+        log("pi probe failed:", err)
+        push("binary_sensor.pi_reachable", "off", {**dev,
+             "friendly_name": "testserver (Pi) reachable", "device_class": "connectivity",
+             "error": err})
+        return
+    push("binary_sensor.pi_reachable", "on", {**dev,
+         "friendly_name": "testserver (Pi) reachable", "device_class": "connectivity",
+         "last_seen": datetime.now(timezone.utc).isoformat(timespec="seconds")})
+    push("binary_sensor.pi_root_ro", "on" if st.get("root_ro") else "off", {**dev,
+         "friendly_name": "Pi SD root read-only", "device_class": "problem",
+         "icon": "mdi:sd", "mount_opts": st.get("root_opts")})
+    push("binary_sensor.pi_robbie", "on" if st.get("robbie") == "active" else "off", {**dev,
+         "friendly_name": "Robbie (openclaw gateway)", "device_class": "running",
+         "icon": "mdi:robot", "unit_state": st.get("robbie")})
+    ext4, kern = st.get("ext4_errors"), st.get("kernel_disk_errors", 0)
+    push("sensor.pi_disk_errors", (ext4 or 0) + kern, {**dev,
+         "friendly_name": "Pi SD errors", "icon": "mdi:sd", "state_class": "measurement",
+         "ext4_errors_lifetime": ext4, "kernel_errors_this_boot": kern,
+         "last_error": st.get("kernel_disk_errors_last"),
+         "sd_card": st.get("sd")})
+    raw = st.get("throttled")
+    if raw:
+        v = int(raw, 16)
+        now = [n for b, n in PI_THROTTLE_BITS.items() if v & (1 << b)]
+        past = [n for b, n in PI_THROTTLE_BITS.items() if v & (1 << (b + 16))]
+        state = ("now: " + ", ".join(now)) if now else \
+                ("since boot: " + ", ".join(past)) if past else "ok"
+        push("sensor.pi_throttled", state, {**dev,
+             "friendly_name": "Pi throttling / power", "icon": "mdi:flash-alert",
+             "raw": raw, "active_now": bool(now), "now": now, "since_boot": past,
+             "ext5v_volts": st.get("ext5v_v")})
+    push("sensor.pi_undervoltage_events", st.get("undervoltage_events", 0), {**dev,
+         "friendly_name": "Pi under-voltage events (this boot)", "icon": "mdi:flash-alert",
+         "state_class": "measurement", "ext5v_volts": st.get("ext5v_v")})
+    if st.get("temp_c") is not None:
+        push("sensor.pi_temp", st["temp_c"], {**dev,
+             "friendly_name": "Pi CPU temp", "icon": "mdi:thermometer",
+             "unit_of_measurement": "°C", "device_class": "temperature",
+             "state_class": "measurement"})
+    push("sensor.pi_free", st.get("root_free_gb"), {**dev,
+         "friendly_name": "Pi SD free", "icon": "mdi:sd", "unit_of_measurement": "GB",
+         "state_class": "measurement", "used_pct": st.get("root_used_pct")})
+    up = st.get("uptime_s", 0)
+    push("sensor.pi_uptime", round(up / 86400, 2), {**dev,
+         "friendly_name": "Pi uptime", "icon": "mdi:timer-outline",
+         "unit_of_measurement": "d", "state_class": "measurement",
+         "booted": datetime.fromtimestamp(st.get("ts", time.time()) - up, timezone.utc)
+                   .isoformat(timespec="seconds"),
+         "load": st.get("load")})
+    push("sensor.pi_memory", st.get("mem_used_pct"), {**dev,
+         "friendly_name": "Pi memory used", "icon": "mdi:memory",
+         "unit_of_measurement": "%", "state_class": "measurement",
+         "available_mb": st.get("mem_avail_mb"), "swap_used_mb": st.get("swap_used_mb")})
+    if st.get("write_mb_per_day") is not None:
+        push("sensor.pi_sd_writes", st["write_mb_per_day"], {**dev,
+             "friendly_name": "Pi SD writes (avg this boot)", "icon": "mdi:sd",
+             "unit_of_measurement": "MB/d", "state_class": "measurement",
+             "written_since_boot_mb": st.get("written_since_boot_mb"),
+             "lifetime_write_gb": st.get("lifetime_write_gb")})
+
 def main():
     if not HA_TOKEN:
         log("no HA_TOKEN in monitor.env — aborting")
@@ -493,7 +580,7 @@ def main():
     t0 = time.time()
     for fn in (collect_load, collect_memory, collect_cpu_temp, collect_gpu,
                collect_disks, collect_zfs, collect_smart, collect_containers,
-               collect_backup, collect_offsite, collect_minecraft):
+               collect_backup, collect_offsite, collect_minecraft, collect_pi):
         try:
             fn()
         except Exception as e:                       # never let one probe kill the run

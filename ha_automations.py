@@ -181,6 +181,58 @@ AUTOMATIONS = {
     "mode": "queued",
     "max": 5,
   },
+  "pi_unreachable": {
+    "alias": "testserver (Pi): unreachable",
+    "description": "bigbox can't ssh into the Pi (Robbie's host) for 5 min: hung, powered off, "
+                   "or off the Wi-Fi. A hard hang (solid red LED) needs a power-cycle.",
+    "trigger": [{"platform": "state", "entity_id": "binary_sensor.pi_reachable",
+                 "to": "off", "for": {"minutes": 5}}],
+    "action": [notify("⚠️ Pi (testserver) unreachable",
+        "bigbox can't reach the Pi: {{ state_attr('binary_sensor.pi_reachable','error') }}. "
+        "Robbie is offline. If the LED is solid red with no green blink, power-cycle it.")],
+    "mode": "single",
+  },
+  "pi_sd_trouble": {
+    "alias": "testserver (Pi): SD card errors / read-only",
+    "description": "The Pi's SD-card root went read-only, or the ext4/kernel storage error "
+                   "count went up. Usually means the card is failing: back it up and replace it.",
+    "trigger": [{"platform": "state", "entity_id": "binary_sensor.pi_root_ro", "to": "on"},
+                {"platform": "state", "entity_id": "sensor.pi_disk_errors"}],
+    "condition": [{"condition": "template", "value_template":
+        "{{ trigger.entity_id == 'binary_sensor.pi_root_ro' or "
+        "(trigger.from_state is not none and trigger.from_state.state | int(-1) >= 0 and "
+        "trigger.to_state.state | int(-1) > trigger.from_state.state | int(-1)) }}"}],
+    "action": [notify("🛑 Pi SD card trouble",
+        "{% if is_state('binary_sensor.pi_root_ro','on') %}Root filesystem is READ-ONLY. {% endif %}"
+        "SD errors: {{ states('sensor.pi_disk_errors') }} "
+        "(ext4 lifetime {{ state_attr('sensor.pi_disk_errors','ext4_errors_lifetime') }}, "
+        "kernel this boot {{ state_attr('sensor.pi_disk_errors','kernel_errors_this_boot') }}). "
+        "Last: {{ state_attr('sensor.pi_disk_errors','last_error') }}. "
+        "Back up ~/.openclaw now and plan an SD swap.", critical=True)],
+    "mode": "single",
+  },
+  "pi_robbie_down": {
+    "alias": "testserver (Pi): Robbie gateway down",
+    "description": "openclaw-gateway (systemctl --user on the Pi) not active for 10 min while "
+                   "the Pi itself is reachable.",
+    "trigger": [{"platform": "state", "entity_id": "binary_sensor.pi_robbie",
+                 "to": "off", "for": {"minutes": 10}}],
+    "condition": [{"condition": "state", "entity_id": "binary_sensor.pi_reachable", "state": "on"}],
+    "action": [notify("⚠️ Robbie is down",
+        "openclaw-gateway on the Pi is {{ state_attr('binary_sensor.pi_robbie','unit_state') }}. "
+        "ssh testserver 'systemctl --user status openclaw-gateway'")],
+    "mode": "single",
+  },
+  "pi_hot": {
+    "alias": "testserver (Pi): running hot",
+    "description": "Pi CPU over 80 °C for 10 min (it soft-throttles at 80, hard at 85).",
+    "trigger": [{"platform": "numeric_state", "entity_id": "sensor.pi_temp",
+                 "above": 80, "for": {"minutes": 10}}],
+    "action": [notify("🌡️ Pi running hot",
+        "testserver CPU is {{ states('sensor.pi_temp') }} °C. "
+        "Throttling: {{ states('sensor.pi_throttled') }}.")],
+    "mode": "single",
+  },
   "bigbox_monitor_stale": {
     "alias": "bigbox: monitor agent silent",
     "description": "No successful monitor push for 6+ minutes.",

@@ -68,3 +68,18 @@ list against `mc_online.json` and writes a `logbook.log` line per change
 (shown in the dashboard's **Join / leave log** card, filtered on
 `sensor.bigbox_mc_players`). A session shorter than one poll interval can be
 missed entirely.
+
+## testserver (Pi 5 / Robbie) health
+
+Each run, `collect_pi()` pipes `pi_health.py` to the Pi over ssh
+(`ssh spencer@10.0.0.17 python3 -`, bigbox spencer key; override with `PI_HOST=`
+in monitor.env) — nothing is installed on the Pi, no sudo needed. Entities:
+`binary_sensor.pi_reachable` / `pi_root_ro` / `pi_robbie` (openclaw-gateway
+active) and `sensor.pi_disk_errors` (ext4 lifetime errors + kernel mmc/ext4/I/O
+errors this boot), `pi_throttled` (decoded `vcgencmd get_throttled`),
+`pi_undervoltage_events`, `pi_temp`, `pi_free` (GB), `pi_uptime` (days),
+`pi_memory`, `pi_sd_writes` (MB/day this boot). If ssh fails only
+`pi_reachable` flips to off; the rest keep their last value.
+
+Automations: Pi unreachable 5+ min · SD read-only or error count up (critical) ·
+Robbie gateway down 10+ min (Pi reachable) · Pi >80 °C 10+ min.
