@@ -83,3 +83,7 @@ errors this boot), `pi_throttled` (decoded `vcgencmd get_throttled`),
 
 Automations: Pi unreachable 5+ min · SD read-only or error count up (critical) ·
 Robbie gateway down 10+ min (Pi reachable) · Pi >80 °C 10+ min.
+
+## Baby log
+
+`collect_baby()` reads the baby-log app's read-only `/api/ha` (bearer token in `~/homelab/baby/secrets/ha_token`) every minute and publishes `sensor.baby_*` / `binary_sensor.baby_*`. Dashboard: `echo "$HA_TOKEN" | python3 ha_dashboard.py dashboard-baby.yaml baby-log Baby mdi:baby-carriage`.

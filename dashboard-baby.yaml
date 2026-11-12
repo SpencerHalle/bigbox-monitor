@@ -1,0 +1,59 @@
+title: Baby
+views:
+  - title: Baby
+    path: baby
+    icon: mdi:baby-carriage
+    cards:
+      - type: markdown
+        content: >-
+          {% set f = states('sensor.baby_last_feed') %}
+          {% if is_state('binary_sensor.baby_feeding', 'on') %}
+          ## 🍼 Feeding now
+          started {{ relative_time(as_datetime(state_attr('binary_sensor.baby_feeding', 'since'))) }} ago
+          {% elif f in ['unknown', 'unavailable', ''] %}
+          ## 🍼 No feeds logged yet
+          {% else %}
+          ## 🍼 Last feed started {{ relative_time(as_datetime(f)) }} ago
+          {{ state_attr('sensor.baby_last_feed', 'what') or '' }}{% if state_attr('sensor.baby_last_feed', 'who') %} · {{ state_attr('sensor.baby_last_feed', 'who') }}{% endif %}
+          {% endif %}
+
+          {% if is_state('binary_sensor.baby_sleeping', 'on') %}
+          😴 **Asleep** for {{ relative_time(as_datetime(state_attr('binary_sensor.baby_sleeping', 'since'))) }}
+          {% else %}
+          👀 Awake
+          {% endif %}
+      - type: entities
+        entities:
+          - entity: sensor.baby_last_feed
+            name: Last feed started
+            format: relative
+          - type: attribute
+            entity: sensor.baby_last_feed
+            attribute: what
+            name: Last feed
+          - entity: sensor.baby_last_diaper
+            name: Last diaper
+            format: relative
+          - type: attribute
+            entity: sensor.baby_last_diaper
+            attribute: type
+            name: Diaper type
+          - entity: binary_sensor.baby_sleeping
+            name: Sleeping now
+      - type: glance
+        title: Today
+        entities:
+          - entity: sensor.baby_feeds_today
+            name: Feeds
+          - entity: sensor.baby_diapers_today
+            name: Diapers
+          - entity: sensor.baby_sleep_today
+            name: Sleep (h)
+      - type: history-graph
+        title: Last 24 hours
+        hours_to_show: 24
+        entities:
+          - entity: binary_sensor.baby_feeding
+            name: Feeding
+          - entity: binary_sensor.baby_sleeping
+            name: Sleeping

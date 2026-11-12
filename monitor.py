@@ -55,6 +55,8 @@ HA_URL = CFG.get("HA_URL", "http://10.0.0.90:8123").rstrip("/")
 HA_TOKEN = CFG.get("HA_TOKEN", "")
 MC_CONTAINER = CFG.get("MC_CONTAINER", "spencer-smp")
 PI_HOST = CFG.get("PI_HOST", "spencer@10.0.0.17")    # testserver over the LAN (spencer key)
+BABY_URL = CFG.get("BABY_URL", "http://127.0.0.1:8096").rstrip("/")   # baby-log app, read-only /api/ha
+BABY_TOKEN_FILE = Path(CFG.get("BABY_TOKEN_FILE", "/home/spencer/homelab/baby/secrets/ha_token"))
 
 def log(*a):
     print(datetime.now().strftime("%H:%M:%S"), *a, file=sys.stderr, flush=True)
@@ -573,6 +575,48 @@ def collect_pi():
              "written_since_boot_mb": st.get("written_since_boot_mb"),
              "lifetime_write_gb": st.get("lifetime_write_gb")})
 
+def collect_baby():
+    """Baby log -> HA, via the app's read-only /api/ha (bearer token, no writes)."""
+    try:
+        token = BABY_TOKEN_FILE.read_text().strip()
+    except OSError:
+        return                                    # app not set up on this box
+    req = urllib.request.Request(f"{BABY_URL}/api/ha",
+                                 headers={"Authorization": f"Bearer {token}"})
+    try:
+        with urllib.request.urlopen(req, timeout=5) as r:
+            d = json.loads(r.read())
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError) as e:
+        log("baby log unreachable:", e)
+        push("binary_sensor.baby_log", "off", {"friendly_name": "Baby log app",
+             "device_class": "connectivity", "error": str(e)[:200]})
+        return
+    push("binary_sensor.baby_log", "on", {"friendly_name": "Baby log app",
+         "device_class": "connectivity"})
+    f = d.get("last_feed") or {}
+    push("sensor.baby_last_feed", f.get("start") or "unknown", {
+        "friendly_name": "Baby last feed", "device_class": "timestamp",
+        "icon": "mdi:baby-bottle-outline",
+        **{k: f.get(k) for k in ("what", "side", "method", "switched", "oz", "who",
+                                 "end", "minutes_since_start")}})
+    push("binary_sensor.baby_feeding", "on" if d.get("feed_running") else "off", {
+        "friendly_name": "Baby feeding now", "icon": "mdi:baby-bottle",
+        "since": d.get("feed_running_since")})
+    dp = d.get("last_diaper") or {}
+    push("sensor.baby_last_diaper", dp.get("time") or "unknown", {
+        "friendly_name": "Baby last diaper", "device_class": "timestamp",
+        "icon": "mdi:emoticon-poop", **{k: dp.get(k) for k in ("type", "who", "minutes_since")}})
+    push("binary_sensor.baby_sleeping", "on" if d.get("sleeping") else "off", {
+        "friendly_name": "Baby sleeping", "icon": "mdi:sleep", "since": d.get("sleep_since")})
+    t = d.get("today") or {}
+    push("sensor.baby_feeds_today", t.get("feeds", 0), {"friendly_name": "Baby feeds today",
+         "icon": "mdi:baby-bottle-outline", "state_class": "measurement"})
+    push("sensor.baby_diapers_today", t.get("diapers", 0), {"friendly_name": "Baby diapers today",
+         "icon": "mdi:emoticon-poop", "state_class": "measurement",
+         "wet": t.get("wet", 0), "dirty": t.get("dirty", 0)})
+    push("sensor.baby_sleep_today", t.get("sleep_hours", 0), {"friendly_name": "Baby sleep today",
+         "icon": "mdi:sleep", "unit_of_measurement": "h", "state_class": "measurement"})
+
 def main():
     if not HA_TOKEN:
         log("no HA_TOKEN in monitor.env — aborting")
@@ -580,7 +624,8 @@ def main():
     t0 = time.time()
     for fn in (collect_load, collect_memory, collect_cpu_temp, collect_gpu,
                collect_disks, collect_zfs, collect_smart, collect_containers,
-               collect_backup, collect_offsite, collect_minecraft, collect_pi):
+               collect_backup, collect_offsite, collect_minecraft, collect_pi,
+               collect_baby):
         try:
             fn()
         except Exception as e:                       # never let one probe kill the run
